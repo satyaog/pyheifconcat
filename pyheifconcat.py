@@ -1,13 +1,8 @@
-import argparse, collections, glob, importlib.util, os, subprocess, sys
+import argparse, glob, importlib.util, os, subprocess, sys
 
 h5py_spec = importlib.util.find_spec("h5py")
 if h5py_spec is not None:
     import h5py
-
-
-TranscodeArgs = collections.namedtuple("TranscodeArgs",
-                                       ["action", "src", "dest",
-                                        "transcoding_cmd", "ssh_remote", "tmp"])
 
 
 def _get_remote_path(ssh_remote, path):
@@ -175,12 +170,13 @@ def extract_hdf5(args):
             file.write(img_jpeg)
 
     if args.transcode:
-        transcode_args = TranscodeArgs(action="transcode",
-                                       src=','.join(extracted_filenames),
-                                       dest=args.dest,
-                                       transcoding_cmd=args.transcoding_cmd,
-                                       ssh_remote=args.ssh_remote,
-                                       tmp=tmp_dir)
+        transcode_args = build_transcode_parser() \
+            .parse_args(["transcode",
+                         ','.join(extracted_filenames),
+                         args.dest,
+                         args.transcoding_cmd,
+                         "--ssh-remote", args.ssh_remote,
+                         "--tmp", tmp_dir])
 
         transcode(transcode_args)
 
