@@ -2,11 +2,16 @@ import glob, os, shutil, subprocess
 
 from pyheifconcat import concat, transcode, parse_args
 
+TESTS_WORKING_DIR = os.path.abspath('.')
 
-PWD = "test_tmp"
+os.environ["PATH"] = ':'.join([os.environ["PATH"],
+                               os.path.join(TESTS_WORKING_DIR, "mocks")])
+
+PWD = "tests_tmp"
 
 if PWD and not os.path.exists(PWD):
     os.makedirs(PWD)
+
 os.chdir(PWD)
 
 
@@ -66,7 +71,6 @@ def test_concat_no_queue():
     src = "input/dir/"
     dest = "output/dir/concat.bza"
     src_dir = os.path.dirname(src)
-    dest_dir = os.path.dirname(dest)
     completed_list_filepath = os.path.join(src_dir, "completed_list")
 
     to_concat_filepaths = []
@@ -146,8 +150,7 @@ def test_trancode():
     for i in range(10):
         tmp_filepaths.append(os.path.join(tmp_dir, "file_{}_5mb.img".format(i)))
 
-    args = parse_args(["transcode", ','.join(tmp_filepaths), dest,
-                       "mv {src} {dest}"])
+    args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
 
     try:
         _test_trancode(tmp_filepaths, 0, tmp_dir, dest_dir, args)
@@ -165,8 +168,7 @@ def test_trancode_completed_3():
     for i in range(10):
         tmp_filepaths.append(os.path.join(tmp_dir, "file_{}_5mb.img".format(i)))
 
-    args = parse_args(["transcode", ','.join(tmp_filepaths), dest,
-                       "mv {src} {dest}"])
+    args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
 
     try:
         _test_trancode(tmp_filepaths, 3, tmp_dir, dest_dir, args)
@@ -181,7 +183,6 @@ def test_action_redirection():
     raw_transcode_arguments = ["transcode",
                                "src_transcode",
                                "dest_transcode",
-                               "transcoding_cmd_transcode",
                                "--ssh-remote", "remote_transcode",
                                "--tmp", "tmp_transcode"]
 
@@ -191,7 +192,6 @@ def test_action_redirection():
                                   "--start", "10",
                                   "--number", "15",
                                   "--transcode",
-                                  "--transcoding-cmd", "transcoding_cmd_extract_hdf5",
                                   "--ssh-remote", "remote_extract_hdf5",
                                   "--tmp", "tmp_extract_hdf5"]
 
@@ -206,7 +206,6 @@ def test_action_redirection():
     assert args.action == "transcode"
     assert args.src == "src_transcode"
     assert args.dest == "dest_transcode"
-    assert args.transcoding_cmd == "transcoding_cmd_transcode"
     assert args.ssh_remote == "remote_transcode"
     assert args.tmp == "tmp_transcode"
 
@@ -217,6 +216,5 @@ def test_action_redirection():
     assert args.dest == "dest_extract_hdf5"
     assert args.start == 10
     assert args.number == 15
-    assert args.transcoding_cmd == "transcoding_cmd_extract_hdf5"
     assert args.ssh_remote == "remote_extract_hdf5"
     assert args.tmp == "tmp_extract_hdf5"

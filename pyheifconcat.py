@@ -86,7 +86,10 @@ def transcode_img(input_path, dest_dir, args):
         os.makedirs(tmp_dir)
 
     output_path = os.path.join(tmp_dir, filename + ".transcoded")
-    command = args.transcoding_cmd.format(src=input_path, dest=output_path)
+    command = "image2heif --codec=h264 --tile=512:512:yuv420 --crf=10 " \
+              "--primary --thumb --name=input " \
+              "--item={src} --type=pict --output={dest}" \
+              .format(src=input_path, dest=output_path)
     process = subprocess.Popen(command.split())
     process.wait()
 
@@ -136,7 +139,6 @@ def extract_hdf5(args):
     :param args: parsed arguments
     """
     if not args.transcode:
-        args.transcoding_cmd = None
         args.ssh_remote = None
         args.tmp = None
 
@@ -174,7 +176,6 @@ def extract_hdf5(args):
             .parse_args(["transcode",
                          ','.join(extracted_filenames),
                          args.dest,
-                         args.transcoding_cmd,
                          "--ssh-remote", args.ssh_remote,
                          "--tmp", tmp_dir])
 
@@ -218,9 +219,6 @@ def build_transcode_parser():
                         help="the source file or ',' separated files to transcode")
     parser.add_argument("dest", metavar="destination",
                         help="the destination directory for the transcoded file(s)")
-    parser.add_argument("transcoding_cmd", metavar="transcoding-cmd",
-                        help="transcoding command with the following placeholders: "
-                             "{src}, {dest}")
     parser.add_argument("--ssh-remote", metavar="REMOTE",
                         help="optional remote to use to transfer the transcoded "
                              "file to destination")
@@ -252,10 +250,6 @@ def build_extract_hdf5_parser():
 
         parser.add_argument("--transcode", default=False, action="store_true",
                             help="follow the extraction with a transcoding")
-        parser.add_argument("--transcoding-cmd", metavar="CMD",
-                            help="if --transcode is True, transcoding command "
-                                 "with the following placeholders: "
-                                 "{src}, {dest}")
         parser.add_argument("--ssh-remote", metavar="REMOTE",
                             help="if --transcode is True, optional remote to "
                                  "use to transfer the transcoded file to "

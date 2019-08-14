@@ -1,0 +1,54 @@
+#!/bin/bash
+
+for i in "$@"
+do
+  case ${i} in
+      --codec=*)
+      CODEC="${i#*=}"
+      ;;
+      --tile=*)
+      TILE="${i#*=}"
+      ;;
+      --crf=*)
+      CRF="${i#*=}"
+      ;;
+
+      --primary)
+      PRIMARY=TRUE
+      ;;
+      --thumb)
+      THUMB=TRUE
+      ;;
+      --name=*)
+      NAME="${i#*=}"
+      ;;
+
+      --item=*)
+      ITEM="${i#*=}"
+      ;;
+      --type=*)
+      TYPE="${i#*=}"
+      ;;
+
+      --output=*)
+      OUTPUT="${i#*=}"
+      ;;
+
+      *)
+      echo Unknown option ${i}
+      exit 1
+      ;;
+esac
+done
+
+echo CODEC = ${CODEC}
+echo TILE PATH = ${TILE}
+echo CRF = ${CRF}
+echo PRIMARY = ${PRIMARY}
+echo THUMB = ${THUMB}
+echo NAME = ${NAME}
+echo ITEM = ${ITEM}
+echo TYPE = ${TYPE}
+echo OUTPUT = ${OUTPUT}
+
+mv ${ITEM} ${OUTPUT}
