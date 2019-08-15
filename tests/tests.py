@@ -66,7 +66,8 @@ def test_concat():
     to_concat_filepaths = []
     for i in range(10):
         to_concat_filepaths.append(os.path.join(queue_dir,
-                                                "file_{}_5mb.img".format(i)))
+                                                "file_{}_5mb.img.transcoded"
+                                                .format(i)))
 
     args = parse_args(["concat", src, dest])
 
@@ -93,7 +94,8 @@ def test_concat_completed_3():
     to_concat_filepaths = []
     for i in range(10):
         to_concat_filepaths.append(os.path.join(queue_dir,
-                                                "file_{}_5mb.img".format(i)))
+                                                "file_{}_5mb.img.transcoded"
+                                                .format(i)))
 
     args = parse_args(["concat", src, dest])
 
@@ -122,6 +124,9 @@ def test_concat_no_queue():
     try:
         concat_bytes = b''
         concat(args)
+
+        assert os.path.exists(os.path.join(src_dir, "upload/"))
+        assert os.path.exists(os.path.join(src_dir, "queue/"))
 
         with open(args.dest, "rb") as file:
             assert file.read() == concat_bytes

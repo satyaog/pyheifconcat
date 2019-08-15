@@ -49,17 +49,20 @@ def concat(args):
     Files with a base name that is contained in the 'completed_list' file of
     the source directory will be ignored
 
+    If they don't exist, the subdirectories 'upload' and 'queue' of the source
+    directory will be created
+
     :param args: parsed arguments
     """
     src_dir = args.src
     dest_dir = os.path.dirname(args.dest)
-    queued_files = glob.glob(os.path.join(src_dir, "queue/", '*'))
+    queue_dir = os.path.join(src_dir, "queue/")
+    queued_files = glob.glob(os.path.join(queue_dir, '*'))
     queued_files.sort()
 
     # Setup directories hierarchy that will be used by "transcode". Needed in
     # remote situation, where it simplifies the creation of the hierarchy
-    upload_dir = os.path.join(dest_dir, "upload/")
-    queue_dir = os.path.join(dest_dir, "queue/")
+    upload_dir = os.path.join(src_dir, "upload/")
     if upload_dir and not os.path.exists(upload_dir):
         os.makedirs(upload_dir)
     if queue_dir and not os.path.exists(queue_dir):
@@ -74,7 +77,10 @@ def concat(args):
          open(os.path.join(src_dir, "completed_list"), "a") \
          as completed_list_file:
         for queued_filepath in queued_files:
-            if os.path.basename(queued_filepath) in completed_list:
+            filename = queued_filepath
+            if filename.endswith(".transcoded"):
+                filename = filename[0:-len(".transcoded")]
+            if os.path.basename(filename) in completed_list:
                 continue
             with open(queued_filepath, "rb") as queued_file:
                 concat_file.write(queued_file.read())
