@@ -1,4 +1,6 @@
-import argparse, glob, importlib.util, os, subprocess, sys
+import argparse, glob, importlib.util, logging, os, subprocess, sys
+
+LOGGER = logging.getLogger(__name__)
 
 h5py_spec = importlib.util.find_spec("h5py")
 if h5py_spec is not None:
@@ -76,11 +78,18 @@ def concat(args):
     with open(args.dest, "ab") as concat_file, \
          open(os.path.join(src_dir, "completed_list"), "a") \
          as completed_list_file:
+        if not len(queued_files):
+            LOGGER.info("No queued files in [{}] to append to [{}]"
+                        .format(queue_dir, args.dest))
         for queued_filepath in queued_files:
-            filename = queued_filepath
+            filename = os.path.basename(queued_filepath)
             if filename.endswith(".transcoded"):
                 filename = filename[0:-len(".transcoded")]
-            if os.path.basename(filename) in completed_list:
+            if filename in completed_list:
+                LOGGER.info("Ignoring [{}] since [{}] could found in [{}]"
+                            .format(filename,
+                                    os.path.basename(filename),
+                                    os.path.join(src_dir, "completed_list")))
                 continue
             with open(queued_filepath, "rb") as queued_file:
                 concat_file.write(queued_file.read())
@@ -149,6 +158,10 @@ def transcode(args):
 
     for input_path in args.src.split(','):
         if os.path.basename(input_path) in completed_list:
+            LOGGER.info("Ignoring [{}] since [{}] could found in "
+                        "[{}]/completed_list"
+                        .format(input_path, os.path.basename(input_path),
+                                dest_dir))
             continue
         transcode_img(input_path, dest_dir, args)
 
