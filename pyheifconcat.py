@@ -17,7 +17,7 @@ def _get_remote_path(ssh_remote, path):
 
 def _get_completed_list(dest_dir, ssh_remote):
     completed_list_filepath = os.path.join(dest_dir, "completed_list")
-    process = subprocess.Popen(["rsync",
+    process = subprocess.Popen(["rsync", "-v",
                                 _get_remote_path(ssh_remote,
                                                  completed_list_filepath),
                                 '.'])
@@ -79,17 +79,17 @@ def concat(args):
          open(os.path.join(src_dir, "completed_list"), "a") \
          as completed_list_file:
         if not len(queued_files):
-            LOGGER.info("No queued files in [{}] to append to [{}]"
-                        .format(queue_dir, args.dest))
+            LOGGER.warning("No queued files in [{}] to append to [{}]"
+                           .format(queue_dir, args.dest))
         for queued_filepath in queued_files:
             filename = os.path.basename(queued_filepath)
             if filename.endswith(".transcoded"):
                 filename = filename[0:-len(".transcoded")]
             if filename in completed_list:
-                LOGGER.info("Ignoring [{}] since [{}] could found in [{}]"
-                            .format(filename,
-                                    os.path.basename(filename),
-                                    os.path.join(src_dir, "completed_list")))
+                LOGGER.warning("Ignoring [{}] since [{}] could found in [{}]"
+                               .format(filename,
+                                       os.path.basename(filename),
+                                       os.path.join(src_dir, "completed_list")))
                 continue
             with open(queued_filepath, "rb") as queued_file:
                 concat_file.write(queued_file.read())
@@ -125,15 +125,22 @@ def transcode_img(input_path, dest_dir, args):
     process.wait()
 
     uploaded_path = os.path.join(upload_dir, os.path.basename(output_path))
-    process = subprocess.Popen(["rsync", "--remove-source-files", output_path,
+    process = subprocess.Popen(["rsync", "-v", "--remove-source-files", output_path,
                                 _get_remote_path(args.ssh_remote,
                                                  upload_dir)])
-    process.wait()
+
+    if process.wait() != 0:
+        LOGGER.error("Could not move file [{}] to upload dir [{}]"
+                     .format(output_path, upload_dir))
+        return
 
     queued_path = os.path.join(queue_dir, os.path.basename(output_path))
     if args.ssh_remote:
-        subprocess.Popen(["ssh", args.ssh_remote,
-                          "mv {} {}".format(uploaded_path, queued_path)])
+        process = subprocess.Popen(["ssh", args.ssh_remote,
+                                    "mv -v {} {}".format(uploaded_path, queued_path)])
+        if process.wait() != 0:
+            LOGGER.error("Could not move file [{}] to queue dir [{}]"
+                         .format(uploaded_path, queued_path))
     else:
         os.rename(uploaded_path, queued_path)
 
