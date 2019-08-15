@@ -135,17 +135,17 @@ def test_concat_no_queue():
         shutil.rmtree(".", ignore_errors=True)
 
 
-def _test_trancode(tmp_filepaths, nb_files_to_skip, tmp_dir, dest_dir, args):
-    uploaded_dir = os.path.join(dest_dir, "upload")
-    queued_dir = os.path.join(dest_dir, "queue")
+def _prepare_transcode_data(tmp_filepaths, nb_files_to_skip, tmp_dir, dest_dir):
+    upload_dir = os.path.join(dest_dir, "upload")
+    queue_dir = os.path.join(dest_dir, "queue")
     completed_list_filepath = os.path.join(dest_dir, "completed_list")
 
     if tmp_dir and not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
-    if uploaded_dir and not os.path.exists(uploaded_dir):
-        os.makedirs(uploaded_dir)
-    if queued_dir and not os.path.exists(queued_dir):
-        os.makedirs(queued_dir)
+    if upload_dir and not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    if queue_dir and not os.path.exists(queue_dir):
+        os.makedirs(queue_dir)
 
     processes = []
     for i, tmp_filepath in enumerate(tmp_filepaths):
@@ -164,29 +164,44 @@ def _test_trancode(tmp_filepaths, nb_files_to_skip, tmp_dir, dest_dir, args):
     with open(completed_list_filepath, "w") as completed_list_file:
         for tmp_filepath in tmp_filepaths[:nb_files_to_skip]:
             tmp_filename = os.path.basename(tmp_filepath)
-            completed_list_file.write(os.path.join(queued_dir, tmp_filename))
+            completed_list_file.write(os.path.join(queue_dir, tmp_filename))
             completed_list_file.write('\n')
 
-    transcode(args)
+    return files_bytes
 
-    assert len(glob.glob(os.path.join(tmp_dir, '*'))) == nb_files_to_skip
-    assert len(glob.glob(os.path.join(uploaded_dir, '*'))) == 0
 
-    queued_list = glob.glob(os.path.join(queued_dir, '*'))
+def _prepare_transcode_target_data(tmp_filepaths):
+    tragets_bytes = []
+    for i, tmp_filepath in enumerate(tmp_filepaths):
+        tragets_bytes.append(i.to_bytes(8, byteorder="little"))
+        with open(tmp_filepath + ".target", "xb") as file:
+            file.write(tragets_bytes[-1])
+
+    return tragets_bytes
+
+
+def _test_trancode(tmp_filepaths, nb_files_to_skip, dest_dir,
+                   files_bytes, targets_bytes):
+    upload_dir = os.path.join(dest_dir, "upload")
+    queue_dir = os.path.join(dest_dir, "queue")
+
+    assert len(glob.glob(os.path.join(upload_dir, '*'))) == 0
+
+    queued_list = glob.glob(os.path.join(queue_dir, '*'))
     queued_list.sort()
-    assert len(queued_list) == \
-           len(tmp_filepaths) - nb_files_to_skip
+    assert len(queued_list) == len(tmp_filepaths) - nb_files_to_skip
 
     for i, filepath in enumerate(queued_list):
         with open(filepath, "rb") as file:
             file_bytes = file.read()
-            assert file_bytes == files_bytes[i + nb_files_to_skip]
+        assert file_bytes == files_bytes[i + nb_files_to_skip] + \
+                             targets_bytes[i + nb_files_to_skip]
 
 
 def test_trancode():
     dest = "output/dir/"
     dest_dir = os.path.dirname(dest)
-    tmp_dir = "tmp_test"
+    tmp_dir = "tmp"
 
     tmp_filepaths = []
     for i in range(10):
@@ -195,7 +210,10 @@ def test_trancode():
     args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
 
     try:
-        _test_trancode(tmp_filepaths, 0, tmp_dir, dest_dir, args)
+        files_bytes = _prepare_transcode_data(tmp_filepaths, 0, tmp_dir, dest_dir)
+        targets_bytes = [b'' for _ in range(len(tmp_filepaths))]
+        transcode(args)
+        _test_trancode(tmp_filepaths, 0, dest_dir, files_bytes, targets_bytes)
 
     finally:
         shutil.rmtree(".", ignore_errors=True)
@@ -204,7 +222,7 @@ def test_trancode():
 def test_trancode_completed_3():
     dest = "output/dir/"
     dest_dir = os.path.dirname(dest)
-    tmp_dir = "tmp_test"
+    tmp_dir = "tmp"
 
     tmp_filepaths = []
     for i in range(10):
@@ -213,7 +231,52 @@ def test_trancode_completed_3():
     args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
 
     try:
-        _test_trancode(tmp_filepaths, 3, tmp_dir, dest_dir, args)
+        files_bytes = _prepare_transcode_data(tmp_filepaths, 3, tmp_dir, dest_dir)
+        targets_bytes = [b'' for _ in range(len(tmp_filepaths))]
+        transcode(args)
+        _test_trancode(tmp_filepaths, 3, dest_dir, files_bytes, targets_bytes)
+
+    finally:
+        shutil.rmtree(".", ignore_errors=True)
+
+
+def test_trancode_target_data():
+    dest = "output/dir/"
+    dest_dir = os.path.dirname(dest)
+    tmp_dir = "tmp"
+
+    tmp_filepaths = []
+    for i in range(10):
+        tmp_filepaths.append(os.path.join(tmp_dir, "file_{}_5mb.img".format(i)))
+
+    args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
+
+    try:
+        files_bytes = _prepare_transcode_data(tmp_filepaths, 0, tmp_dir, dest_dir)
+        targets_bytes = _prepare_transcode_target_data(tmp_filepaths)
+        transcode(args)
+        _test_trancode(tmp_filepaths, 0, dest_dir, files_bytes, targets_bytes)
+
+    finally:
+        shutil.rmtree(".", ignore_errors=True)
+
+
+def test_trancode_target_data_completed_3():
+    dest = "output/dir/"
+    dest_dir = os.path.dirname(dest)
+    tmp_dir = "tmp"
+
+    tmp_filepaths = []
+    for i in range(10):
+        tmp_filepaths.append(os.path.join(tmp_dir, "file_{}_5mb.img".format(i)))
+
+    args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
+
+    try:
+        files_bytes = _prepare_transcode_data(tmp_filepaths, 3, tmp_dir, dest_dir)
+        targets_bytes = _prepare_transcode_target_data(tmp_filepaths)
+        transcode(args)
+        _test_trancode(tmp_filepaths, 3, dest_dir, files_bytes, targets_bytes)
 
     finally:
         shutil.rmtree(".", ignore_errors=True)

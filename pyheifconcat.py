@@ -3,6 +3,7 @@ import argparse, glob, importlib.util, os, subprocess, sys
 h5py_spec = importlib.util.find_spec("h5py")
 if h5py_spec is not None:
     import h5py
+    import numpy as np
 
 
 def _get_remote_path(ssh_remote, path):
@@ -55,8 +56,15 @@ def concat(args):
     queued_files = glob.glob(os.path.join(src_dir, "queue/", '*'))
     queued_files.sort()
 
-    if src_dir and not os.path.exists(src_dir):
-        os.makedirs(src_dir)
+    # Setup directories hierarchy that will be used by "transcode". Needed in
+    # remote situation, where it simplifies the creation of the hierarchy
+    upload_dir = os.path.join(dest_dir, "upload/")
+    queue_dir = os.path.join(dest_dir, "queue/")
+    if upload_dir and not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    if queue_dir and not os.path.exists(queue_dir):
+        os.makedirs(queue_dir)
+
     if dest_dir and not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
 
@@ -76,34 +84,38 @@ def concat(args):
 
 
 def transcode_img(input_path, dest_dir, args):
-    uploaded_dir = os.path.join(dest_dir, "upload/")
-    queued_dir = os.path.join(dest_dir, "queue/")
+    upload_dir = os.path.join(dest_dir, "upload/")
+    queue_dir = os.path.join(dest_dir, "queue/")
     tmp_dir = args.tmp if args.tmp is not None else \
               os.path.dirname(input_path)
     filename = os.path.basename(input_path)
+    target_path = input_path + ".target"
 
-    if uploaded_dir and not os.path.exists(uploaded_dir):
-        os.makedirs(uploaded_dir)
-    if queued_dir and not os.path.exists(queued_dir):
-        os.makedirs(queued_dir)
     if tmp_dir and not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
 
     output_path = os.path.join(tmp_dir, filename + ".transcoded")
-    command = "image2heif --codec=h264 --tile=512:512:yuv420 --crf=10 " \
-              "--primary --thumb --name=input " \
-              "--item={src} --type=pict --output={dest}" \
-              .format(src=input_path, dest=output_path)
+    command = "image2heif --codec=h265 --tile=512:512:yuv420 --crf=10 " \
+              "--output={dest} " \
+              "--primary --thumb --name={name} " \
+              "--item=path={src}" \
+              .format(name=os.path.basename(input_path),
+                      src=input_path, dest=output_path)
+    if os.path.exists(target_path):
+        command += " --hidden --name=target " \
+                   "--mime=application/octet-stream --item=type=mime,path={target}" \
+                   .format(target=target_path)
+
     process = subprocess.Popen(command.split())
     process.wait()
 
-    uploaded_path = os.path.join(uploaded_dir, os.path.basename(output_path))
+    uploaded_path = os.path.join(upload_dir, os.path.basename(output_path))
     process = subprocess.Popen(["rsync", "--remove-source-files", output_path,
                                 _get_remote_path(args.ssh_remote,
-                                                 uploaded_dir)])
+                                                 upload_dir)])
     process.wait()
 
-    queued_path = os.path.join(queued_dir, os.path.basename(output_path))
+    queued_path = os.path.join(queue_dir, os.path.basename(output_path))
     if args.ssh_remote:
         subprocess.Popen(["ssh", args.ssh_remote,
                           "mv {} {}".format(uploaded_path, queued_path)])
@@ -167,13 +179,17 @@ def extract_hdf5(args):
         extract_filepath = os.path.join(extract_dir, filename)
         extracted_filenames.append(extract_filepath)
 
-        if os.path.exists(extract_filepath):
-            continue
+        if not os.path.exists(extract_filepath):
+            img_jpeg = bytes(file_h5["encoded_images"][i])
 
-        img_jpeg = bytes(file_h5["encoded_images"][i])
+            with open(extract_filepath, "xb") as file:
+                file.write(img_jpeg)
 
-        with open(extract_filepath, "xb") as file:
-            file.write(img_jpeg)
+        if not os.path.exists(extract_filepath + ".target"):
+            target = file_h5["targets"][i].astype(np.int64).tobytes()
+
+            with open(extract_filepath + ".target", "xb") as file:
+                file.write(target)
 
     if args.transcode:
         transcode_args = build_transcode_parser() \
