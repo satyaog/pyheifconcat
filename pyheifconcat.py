@@ -60,14 +60,18 @@ def concat(args):
     if dest_dir and not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
 
+    completed_list = _get_completed_list(src_dir, None)
+
     with open(args.dest, "ab") as concat_file, \
          open(os.path.join(src_dir, "completed_list"), "a") \
-         as completed_list:
+         as completed_list_file:
         for queued_filepath in queued_files:
+            if os.path.basename(queued_filepath) in completed_list:
+                continue
             with open(queued_filepath, "rb") as queued_file:
                 concat_file.write(queued_file.read())
 
-            completed_list.write(queued_filepath + '\n')
+            completed_list_file.write(queued_filepath + '\n')
             os.remove(queued_filepath)
 
 

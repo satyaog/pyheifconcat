@@ -15,53 +15,95 @@ if PWD and not os.path.exists(PWD):
 os.chdir(PWD)
 
 
+def _prepare_concat_data(to_concat_filepaths, nb_files_to_skip,
+                         completed_list_filepath, queue_dir, dest_dir):
+    if queue_dir and not os.path.exists(queue_dir):
+        os.makedirs(queue_dir)
+    if dest_dir and not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+
+    processes = []
+    for i, to_concat_filepath in enumerate(to_concat_filepaths):
+        processes.append(
+            subprocess.Popen(["dd", "if=/dev/urandom",
+                              "of={}".format(to_concat_filepath),
+                              "bs=1000", "count=5000"]))
+
+    files_bytes = []
+    for i, process in enumerate(processes):
+        process.wait()
+        with open(to_concat_filepaths[i], "rb") as file:
+            files_bytes.append(file.read())
+            assert len(files_bytes[i]) == 5000 * 1000
+
+    with open(completed_list_filepath, "w") as completed_list_file:
+        for to_concat_filepath in to_concat_filepaths[:nb_files_to_skip]:
+            completed_list_file.write(to_concat_filepath)
+            completed_list_file.write('\n')
+
+    return files_bytes
+
+
+def _test_concat(to_concat_filepaths, nb_files_to_skip,
+                 completed_list_filepath, files_bytes, args):
+    with open(args.dest, "rb") as file:
+        assert file.read() == b''.join(files_bytes[nb_files_to_skip:])
+
+    with open(completed_list_filepath, "r") \
+            as completed_list:
+        assert list(filter(None, completed_list.read().split('\n'))) == \
+               to_concat_filepaths
+
+
 def test_concat():
     src = "input/dir/"
     dest = "output/dir/concat.bza"
     src_dir = os.path.dirname(src)
     dest_dir = os.path.dirname(dest)
-    queued_dir = os.path.join(src_dir, "queue")
+    queue_dir = os.path.join(src_dir, "queue")
     completed_list_filepath = os.path.join(src_dir, "completed_list")
 
     to_concat_filepaths = []
     for i in range(10):
-        to_concat_filepaths.append(os.path.join(queued_dir,
+        to_concat_filepaths.append(os.path.join(queue_dir,
                                                 "file_{}_5mb.img".format(i)))
 
     args = parse_args(["concat", src, dest])
 
     try:
-        if queued_dir and not os.path.exists(queued_dir):
-            os.makedirs(queued_dir)
-        if dest_dir and not os.path.exists(dest_dir):
-            os.makedirs(dest_dir)
-
-        processes = []
-        for i, to_concat_filepath in enumerate(to_concat_filepaths):
-            processes.append(
-                subprocess.Popen(["dd", "if=/dev/urandom",
-                                  "of={}".format(to_concat_filepath),
-                                  "bs=1000", "count=5000"]))
-
-        concat_bytes = []
-        for i, process in enumerate(processes):
-            process.wait()
-            with open(to_concat_filepaths[i], "rb") as file:
-                concat_bytes.append(file.read())
-                assert len(concat_bytes[i]) == 5000 * 1000
-
-        concat_bytes = b''.join(concat_bytes)
-        assert len(concat_bytes) == 5000 * 1000 * 10
-
+        files_bytes = \
+            _prepare_concat_data(to_concat_filepaths, 0,
+                                 completed_list_filepath, queue_dir, dest_dir)
         concat(args)
+        _test_concat(to_concat_filepaths, 0, completed_list_filepath,
+                     files_bytes, args)
 
-        with open(args.dest, "rb") as file:
-            assert file.read() == concat_bytes
+    finally:
+        shutil.rmtree(".", ignore_errors=True)
 
-        with open(completed_list_filepath, "r") \
-             as completed_list:
-            assert list(filter(None, completed_list.read().split('\n'))) == \
-                   to_concat_filepaths
+
+def test_concat_completed_3():
+    src = "input/dir/"
+    dest = "output/dir/concat.bza"
+    src_dir = os.path.dirname(src)
+    dest_dir = os.path.dirname(dest)
+    queue_dir = os.path.join(src_dir, "queue")
+    completed_list_filepath = os.path.join(src_dir, "completed_list")
+
+    to_concat_filepaths = []
+    for i in range(10):
+        to_concat_filepaths.append(os.path.join(queue_dir,
+                                                "file_{}_5mb.img".format(i)))
+
+    args = parse_args(["concat", src, dest])
+
+    try:
+        files_bytes = \
+            _prepare_concat_data(to_concat_filepaths, 3,
+                                 completed_list_filepath, queue_dir, dest_dir)
+        concat(args)
+        _test_concat(to_concat_filepaths, 3, completed_list_filepath,
+                     files_bytes, args)
 
     finally:
         shutil.rmtree(".", ignore_errors=True)
