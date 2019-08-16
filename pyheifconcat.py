@@ -1,6 +1,13 @@
 import argparse, glob, importlib.util, logging, os, subprocess, sys
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(os.path.basename(__file__))
+LOGGER.setLevel(logging.INFO)
+
+STREAM_HANDLER = logging.StreamHandler()
+STREAM_HANDLER.setLevel(logging.INFO)
+FORMATTER = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+STREAM_HANDLER.setFormatter(FORMATTER)
+LOGGER.addHandler(STREAM_HANDLER)
 
 h5py_spec = importlib.util.find_spec("h5py")
 if h5py_spec is not None:
@@ -86,7 +93,7 @@ def concat(args):
             if filename.endswith(".transcoded"):
                 filename = filename[0:-len(".transcoded")]
             if filename in completed_list:
-                LOGGER.warning("Ignoring [{}] since [{}] could found in [{}]"
+                LOGGER.warning("Ignoring [{}] since [{}] is in [{}]"
                                .format(filename,
                                        os.path.basename(filename),
                                        os.path.join(src_dir, "completed_list")))
@@ -165,8 +172,7 @@ def transcode(args):
 
     for input_path in args.src.split(','):
         if os.path.basename(input_path) in completed_list:
-            LOGGER.info("Ignoring [{}] since [{}] could found in "
-                        "[{}]/completed_list"
+            LOGGER.info("Ignoring [{}] since [{}] is in [{}]/completed_list"
                         .format(input_path, os.path.basename(input_path),
                                 dest_dir))
             continue
