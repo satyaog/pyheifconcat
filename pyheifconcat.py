@@ -14,6 +14,57 @@ if h5py_spec is not None:
     import h5py
     import numpy as np
 
+ID_FILENAME_TEMPLATE = "{index:012d}.{filename}"
+FILENAME_TEMPLATE = ID_FILENAME_TEMPLATE + ".transcoded"
+
+
+def _is_transcoded(filename):
+    return filename.split('.')[-1] == "transcoded"
+
+
+def _get_file_index(filepath):
+    if isinstance(filepath, str):
+        splitted_filename = os.path.basename(filepath).split('.')
+    else:
+        splitted_filename = filepath
+    if len(splitted_filename[0]) == 12 and splitted_filename[0].isdigit():
+        return int(splitted_filename[0])
+    return None
+
+
+def _get_clean_filepath(filepath, basename=False):
+    if isinstance(filepath, str):
+        dirname = os.path.dirname(filepath)
+        splitted_filename = os.path.basename(filepath).split('.')
+    else:
+        dirname = None
+        splitted_filename = filepath
+    if splitted_filename[-1] == "transcoded":
+        splitted_filename.pop()
+    if _get_file_index(splitted_filename) is not None:
+        splitted_filename.pop(0)
+    return '.'.join(splitted_filename) if basename else \
+           os.path.join(dirname, '.'.join(splitted_filename))
+
+
+def _make_index_filepath(filepath, index):
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    return os.path.join(dirname, ID_FILENAME_TEMPLATE.format(filename=filename,
+                                                             index=index))
+
+
+def _make_target_filepath(filepath):
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    return os.path.join(dirname, filename + ".target")
+
+
+def _make_transcoded_filepath(filepath):
+    dirname = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+    return os.path.join(dirname, filename + ".transcoded")
+
 
 def _get_remote_path(ssh_remote, path):
     if ssh_remote:
@@ -35,10 +86,9 @@ def _get_completed_list(dest_dir, ssh_remote):
             content = file.read()
 
         completed_list = []
-        for filename in content.split('\n'):
-            if filename.endswith(".transcoded"):
-                filename = filename[0:-len(".transcoded")]
-            completed_list.append(os.path.basename(filename))
+        for filepath in content.split('\n'):
+            clean_basename = _get_clean_filepath(filepath, basename=True)
+            completed_list.append(clean_basename)
 
         return completed_list
     else:
@@ -89,13 +139,10 @@ def concat(args):
             LOGGER.warning("No queued files in [{}] to append to [{}]"
                            .format(queue_dir, args.dest))
         for queued_filepath in queued_files:
-            filename = os.path.basename(queued_filepath)
-            if filename.endswith(".transcoded"):
-                filename = filename[0:-len(".transcoded")]
-            if filename in completed_list:
+            clean_basename = _get_clean_filepath(queued_filepath, basename=True)
+            if clean_basename in completed_list:
                 LOGGER.warning("Ignoring [{}] since [{}] is in [{}]"
-                               .format(filename,
-                                       os.path.basename(filename),
+                               .format(queued_filepath, clean_basename,
                                        os.path.join(src_dir, "completed_list")))
                 continue
             with open(queued_filepath, "rb") as queued_file:
@@ -111,12 +158,12 @@ def transcode_img(input_path, dest_dir, args):
     tmp_dir = args.tmp if args.tmp is not None else \
               os.path.dirname(input_path)
     filename = os.path.basename(input_path)
-    target_path = input_path + ".target"
+    target_path = _make_target_filepath(input_path)
 
     if tmp_dir and not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
 
-    output_path = os.path.join(tmp_dir, filename + ".transcoded")
+    output_path = _make_transcoded_filepath(os.path.join(tmp_dir, filename))
     command = "image2heif --codec=h265 --tile=512:512:yuv420 --crf=10 " \
               "--output={dest} " \
               "--primary --thumb --name={name} " \
@@ -171,10 +218,10 @@ def transcode(args):
     completed_list = _get_completed_list(dest_dir, args.ssh_remote)
 
     for input_path in args.src.split(','):
-        if os.path.basename(input_path) in completed_list:
+        clean_basename = _get_clean_filepath(input_path, basename=True)
+        if clean_basename in completed_list:
             LOGGER.info("Ignoring [{}] since [{}] is in [{}]/completed_list"
-                        .format(input_path, os.path.basename(input_path),
-                                dest_dir))
+                        .format(input_path, clean_basename, dest_dir))
             continue
         transcode_img(input_path, dest_dir, args)
 
@@ -208,7 +255,10 @@ def extract_hdf5(args):
 
     for i in range(start, end):
         filename = file_h5["filenames"][i][0].decode("utf-8")
+        filename = _make_index_filepath(filename, i)
         extract_filepath = os.path.join(extract_dir, filename)
+        target_filepath = _make_target_filepath(extract_filepath)
+
         extracted_filenames.append(extract_filepath)
 
         if not os.path.exists(extract_filepath):
@@ -217,10 +267,10 @@ def extract_hdf5(args):
             with open(extract_filepath, "xb") as file:
                 file.write(img_jpeg)
 
-        if not os.path.exists(extract_filepath + ".target"):
+        if not os.path.exists(target_filepath):
             target = file_h5["targets"][i].astype(np.int64).tobytes()
 
-            with open(extract_filepath + ".target", "xb") as file:
+            with open(target_filepath, "xb") as file:
                 file.write(target)
 
     if args.transcode:

@@ -1,6 +1,9 @@
 import glob, os, shutil, subprocess
 
-from pyheifconcat import concat, transcode, parse_args
+from pyheifconcat import FILENAME_TEMPLATE, _get_file_index, \
+    _get_clean_filepath, _is_transcoded, \
+    _make_index_filepath, _make_transcoded_filepath, \
+    concat, transcode, parse_args
 
 TESTS_WORKING_DIR = os.path.abspath('.')
 
@@ -111,6 +114,35 @@ def test_concat_completed_3():
         shutil.rmtree(".", ignore_errors=True)
 
 
+def test_concat_index_completed_3():
+    src = "input/dir/"
+    dest = "output/dir/concat.bza"
+    src_dir = os.path.dirname(src)
+    dest_dir = os.path.dirname(dest)
+    queue_dir = os.path.join(src_dir, "queue")
+    completed_list_filepath = os.path.join(src_dir, "completed_list")
+
+    to_concat_filepaths = []
+    for i in range(10):
+        filepath = os.path.join(queue_dir, "file_{}_5mb.img.transcoded"
+                                           .format(i))
+        filepath = _make_index_filepath(filepath, i)
+        to_concat_filepaths.append(filepath)
+
+    args = parse_args(["concat", src, dest])
+
+    try:
+        files_bytes = \
+            _prepare_concat_data(to_concat_filepaths, 3,
+                                 completed_list_filepath, queue_dir, dest_dir)
+        concat(args)
+        _test_concat(to_concat_filepaths, 3, completed_list_filepath,
+                     files_bytes, args)
+
+    finally:
+        shutil.rmtree(".", ignore_errors=True)
+
+
 def test_concat_no_queue():
     src = "input/dir/"
     dest = "output/dir/concat.bza"
@@ -169,7 +201,8 @@ def _prepare_transcode_data(tmp_filepaths, nb_files_to_skip, tmp_dir, dest_dir):
     with open(completed_list_filepath, "w") as completed_list_file:
         for tmp_filepath in tmp_filepaths[:nb_files_to_skip]:
             tmp_filename = os.path.basename(tmp_filepath)
-            completed_list_file.write(os.path.join(queue_dir, tmp_filename))
+            transcoded_filename = _make_transcoded_filepath(tmp_filename)
+            completed_list_file.write(os.path.join(queue_dir, transcoded_filename))
             completed_list_file.write('\n')
 
     return files_bytes
@@ -245,6 +278,30 @@ def test_trancode_completed_3():
         shutil.rmtree(".", ignore_errors=True)
 
 
+def test_trancode_index_completed_3():
+    dest = "output/dir/"
+    dest_dir = os.path.dirname(dest)
+    tmp_dir = "tmp"
+
+    tmp_filepaths = []
+    for i in range(10):
+        filepath = os.path.join(tmp_dir, "file_{}_5mb.img"
+                                         .format(i))
+        filepath = _make_index_filepath(filepath, i)
+        tmp_filepaths.append(filepath)
+
+    args = parse_args(["transcode", ','.join(tmp_filepaths), dest])
+
+    try:
+        files_bytes = _prepare_transcode_data(tmp_filepaths, 3, tmp_dir, dest_dir)
+        targets_bytes = [b'' for _ in range(len(tmp_filepaths))]
+        transcode(args)
+        _test_trancode(tmp_filepaths, 3, dest_dir, files_bytes, targets_bytes)
+
+    finally:
+        shutil.rmtree(".", ignore_errors=True)
+
+
 def test_trancode_target_data():
     dest = "output/dir/"
     dest_dir = os.path.dirname(dest)
@@ -285,6 +342,59 @@ def test_trancode_target_data_completed_3():
 
     finally:
         shutil.rmtree(".", ignore_errors=True)
+
+
+def test__is_transcoded():
+    filename = FILENAME_TEMPLATE.format(filename="some_filename.extension",
+                                        index=12)
+    splitted_filename = filename.split('.')
+
+    assert len(splitted_filename) == 4
+    assert _is_transcoded(filename)
+    assert not _is_transcoded('.'.join(splitted_filename[:-1]))
+
+
+def test__get_clean_filepath():
+    filename = FILENAME_TEMPLATE.format(filename="some_filename.extension",
+                                        index=12)
+    splitted_filename = filename.split('.')
+
+    assert _get_clean_filepath(filename) == "some_filename.extension"
+    assert _get_clean_filepath('.'.join(splitted_filename[:-1])) == \
+           "some_filename.extension"
+    assert _get_clean_filepath('.'.join(splitted_filename[1:])) == \
+           "some_filename.extension"
+    assert _get_clean_filepath('.'.join(splitted_filename[1:-1])) == \
+           "some_filename.extension"
+    assert _get_clean_filepath("dir/dir/" + filename, basename=True) == \
+           "some_filename.extension"
+    assert _get_clean_filepath("dir/dir/" + filename) == \
+           "dir/dir/some_filename.extension"
+
+
+def test__get_file_index():
+    filename = FILENAME_TEMPLATE.format(filename="some_filename.extension",
+                                        index=12)
+    splitted_filename = filename.split('.')
+
+    assert _get_file_index(filename) == 12
+    assert _get_file_index('.'.join(splitted_filename[:-1])) == 12
+    assert _get_file_index('.'.join(splitted_filename[1:])) is None
+    assert _get_file_index("dir/dir/" + filename) == 12
+
+
+def test__make_index_filepath():
+    assert _make_index_filepath("some_filename.extension", 12) == \
+           "000000000012.some_filename.extension"
+    assert _make_index_filepath("dir/dir/some_filename.extension", 12) == \
+           "dir/dir/000000000012.some_filename.extension"
+
+
+def test__make_transcoded_filepath():
+    assert _make_transcoded_filepath("some_filename.extension") == \
+           "some_filename.extension.transcoded"
+    assert _make_transcoded_filepath("dir/dir/some_filename.extension") == \
+           "dir/dir/some_filename.extension.transcoded"
 
 
 def test_action_redirection():
